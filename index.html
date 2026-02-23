@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JD Vapes</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+</head>
+<body>
+  <div id="loader">
+    <div class="loader-card">
+      <div class="loader-top">
+        <div class="loader-logo">JD<span style="background:linear-gradient(90deg,var(--brand),var(--brand2));-webkit-background-clip:text;background-clip:text;color:transparent;">Vapes</span></div>
+        <div class="pulse"></div>
+      </div>
+      <div class="loader-bar"><div></div></div>
+      <div class="loader-sub" id="loaderText">Betöltés...</div>
+    </div>
+  </div>
+
+  <div class="wrap" style="display:none" id="app">
+    <aside class="sidebar">
+      <div class="brand">JD<span>Vapes</span></div>
+
+      <div class="nav" id="nav"></div>
+
+      <div class="sidebar-bottom">
+        <div class="pill">
+          <span>Nyelv:</span>
+          <b id="langLabel">HU</b>
+          <button id="langBtn">Váltás</button>
+        </div>
+        <div class="pill">
+          <span>Találat:</span>
+          <b id="count">0</b>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="h1" id="title">Összes termék</div>
+        <input id="search" placeholder="Keresés..." style="width:min(420px,100%);border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(11,15,23,.35);color:var(--text);padding:10px 12px;outline:none;">
+      </div>
+
+      <div class="grid" id="grid"></div>
+
+      <div class="small-muted" id="empty" style="display:none;margin-top:12px;">
+        Nincs találat.
+      </div>
+    </main>
+  </div>
+
+  <script src="assets/app.js?v=sv_fix11_20251225"></script>
+</body>
+</html>
