@@ -841,8 +841,12 @@
 
   async function validateSource(s){
     try{
-      if(!s || !s.owner || !s.repo || !s.branch) return false;
-      const testUrl = `https://raw.githubusercontent.com/${s.owner}/${s.repo}/${s.branch}/data/products.json?_=${Date.now()}`;
+      if(!s || !s.owner || !s.repo) return false;
+      const owner = String(s.owner).trim().toLowerCase();
+      const repo  = String(s.repo).trim();
+      const sameHost = location.hostname.toLowerCase() === `${owner}.github.io`;
+      const base = sameHost ? `${location.origin}/${repo}` : `https://${owner}.github.io/${repo}`;
+      const testUrl = `${base}/data/products.json?_=${Date.now()}`;
       const r = await fetch(testUrl, { cache: "no-store" });
       return r.ok;
     }catch{ return false; }
@@ -923,22 +927,12 @@
     } catch {}
 
     const or = getOwnerRepoFromUrl() || getOwnerRepoCfg();
-    if (!or) return null;
-
-    const branches = [or.branch, "main", "master", "gh-pages"]
-      .filter(Boolean)
-      .filter((v, i, a) => a.indexOf(v) === i);
-
-    for (const br of branches) {
-      const testUrl = `https://raw.githubusercontent.com/${or.owner}/${or.repo}/${br}/data/products.json?_=${Date.now()}`;
-      try {
-        const r = await fetch(testUrl, { cache: "no-store" });
-        if (r.ok) {
-          source = { owner: or.owner, repo: or.repo, branch: br };
-          try { localStorage.setItem("sv_source", JSON.stringify(source)); } catch {}
-          return source;
-        }
-      } catch {}
+    // Do not probe raw.githubusercontent.com (can be blocked by CORS); just use the provided values.
+    if (or && or.owner && or.repo) {
+      const br = String(or.branch || "main").trim() || "main";
+      source = { owner: String(or.owner).trim(), repo: String(or.repo).trim(), branch: br };
+      try { localStorage.setItem("sv_source", JSON.stringify(source)); } catch {}
+      return source;
     }
 
     return null;
@@ -946,35 +940,34 @@
 
   async function fetchJson(relPath, { forceBust=false } = {}){
     const src = await resolveSource();
-    const relBase = relPath;
-    const rawBase = src ? `https://raw.githubusercontent.com/${src.owner}/${src.repo}/${src.branch}/${relPath}` : null;
 
     const mkUrl = (base) => forceBust ? `${base}${base.includes("?") ? "&" : "?"}_=${Date.now()}` : base;
 
-    const headers = {
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
-    };
+    const candidates = [];
 
-    if (rawBase) {
-      try {
-        const url = mkUrl(rawBase);
-        const r = await fetch(url, { cache: "no-store", headers });
-        if (r.status === 304) return null;
-        if (r.ok) return await r.json();
-        try { localStorage.removeItem("sv_source"); } catch {}
-        source = null;
-      } catch {
-        try { localStorage.removeItem("sv_source"); } catch {}
-        source = null;
-      }
+    if (src && src.owner && src.repo) {
+      const owner = String(src.owner).trim().toLowerCase();
+      const repo  = String(src.repo).trim();
+      const sameHost = location.hostname.toLowerCase() === `${owner}.github.io`;
+      const base = sameHost ? `${location.origin}/${repo}` : `https://${owner}.github.io/${repo}`;
+      candidates.push(`${base}/${relPath}`);
     }
 
-    const url = mkUrl(relBase);
-    const r = await fetch(url, { cache: "no-store", headers });
-    if (r.status === 304) return null;
-    if (!r.ok) throw new Error(`Nem tudtam betölteni: ${relPath} (${r.status})`);
-    return await r.json();
+    // local fallback (useful for dev / single-site setups)
+    candidates.push(relPath);
+
+    let lastStatus = 0;
+    for (const c of candidates) {
+      try{
+        const url = mkUrl(c);
+        const r = await fetch(url, { cache: "no-store" });
+        lastStatus = r.status || 0;
+        if (r.status === 304) return null;
+        if (r.ok) return await r.json();
+      }catch{}
+    }
+
+    throw new Error(`Nem tudtam betölteni: ${relPath} (${lastStatus || "n/a"})`);
   }
 
   async function fetchProducts({ forceBust=false } = {}){
