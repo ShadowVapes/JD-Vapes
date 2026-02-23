@@ -294,7 +294,7 @@
     const totalsEl = document.querySelector("#svCartTotals");
     if(!wrap || !empty) return;
 
-    const products = (state.productsDoc.products || []).filter(p => p && p.id && p.visible !== false);
+    const products = (state.productsDoc.products || []).filter(p => p && p.id && isProdVisible(p));
     const rows = [];
     let totalSum = 0;
 
@@ -396,17 +396,19 @@
     const panel = document.querySelector("#svCartOverlay .cart-panel");
     if(!panel) return;
 
-    const products = (state.productsDoc.products || []).filter(p => p && p.id && p.visible !== false);
+    const products = (state.productsDoc.products || []).filter(p => p && p.id && isProdVisible(p));
 
     const items = [...state.cart.entries()].map(([pid, qty0]) => {
       const p = products.find(x => String(x.id) === String(pid));
       if(!p) return null;
       const qty = Math.max(1, Number(qty0||0)||0);
-      const unit = Number(effectivePrice(p) || 0);
+      const unitJD = Number(effectivePrice(p) || 0);
+      const unitSV = Number(effectivePriceSV(p) || 0);
       return {
         productId: String(pid),
         qty,
-        unitPrice: unit,
+        unitPrice: unitSV,
+        unitPriceJD: unitJD,
         name: getName(p),
         flavor: getFlavor(p),
         image: (p.image || "").trim()
@@ -416,11 +418,12 @@
     if(!items.length) return;
 
     const totalQty = items.reduce((a,it)=>a+it.qty,0);
-    const totalSum = items.reduce((a,it)=>a+(it.unitPrice*it.qty),0);
+    const totalSum = items.reduce((a,it)=>{ const u = Number((it.unitPriceJD ?? it.unitPrice) || 0); return a + (u*it.qty); },0);
 
     const lines = items.map(it => {
       const label = `${it.name}${it.flavor ? " • " + it.flavor : ""}`;
-      const lineTotal = it.unitPrice * it.qty;
+      const dispUnit = Number((it.unitPriceJD ?? it.unitPrice) || 0);
+      const lineTotal = dispUnit * it.qty;
       const img = (it.image || "").trim();
       const thumb = img
         ? `<img class="res-sum-thumb" src="${escHtml(img)}" alt="">`
@@ -432,7 +435,7 @@
           <div class="res-sum-mid">
             <div class="res-sum-name">${escHtml(label)}</div>
             <div class="res-sum-meta">
-              <span>Egységár: <b>${fmtFt(it.unitPrice)}</b></span>
+              <span>Egységár: <b>${fmtFt(dispUnit)}</b></span>
               <span>Db: <b>${it.qty}</b></span>
             </div>
           </div>
@@ -720,7 +723,7 @@
         createdAt,
         expiresAt,
         confirmed: false,
-        items: items.map(it => ({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice }))
+        items: items.map(it => ({ productId: it.productId, qty: it.qty, unitPrice: it.unitPrice, unitPriceJD: it.unitPriceJD }))
       };
 
             await createReservationViaApi(reservation);
@@ -799,6 +802,17 @@
       : (p.flavor_hu || p.flavor_en || p.flavor || "");
   }
 
+  function catById(id){
+    return (state.productsDoc.categories || []).find(x => String(x.id) === String(id)) || null;
+  }
+
+  function isProdVisible(p){
+    if(!p || !p.id) return false;
+    const c = catById(p.categoryId);
+    if(c && c.visibleJD === false) return false;
+    return p.visibleJD !== false;
+  }
+
   // ✅ Csak hónap: YYYY-MM -> "December" (évszám nélkül)
   function formatMonth(monthStr) {
     if (!monthStr) return "";
@@ -818,12 +832,22 @@
     }
   }
 
-  function effectivePrice(p) {
+  function effectivePriceSV(p) {
     const price = p && p.price;
     if (price !== null && price !== undefined && price !== "" && Number(price) > 0) return Number(price);
-    const c = (state.productsDoc.categories || []).find((x) => String(x.id) === String(p.categoryId));
+    const c = catById(p && p.categoryId);
     const bp = c ? Number(c.basePrice || 0) : 0;
     return Number.isFinite(bp) ? bp : 0;
+  }
+
+  // JD Vapes: megjelenítéshez ezt használjuk (JD ár -> JD kategória ár -> SV fallback)
+  function effectivePrice(p) {
+    const price = p && p.priceJD;
+    if (price !== null && price !== undefined && price !== "" && Number(price) > 0) return Number(price);
+    const c = catById(p && p.categoryId);
+    const bpjd = c ? Number((c.basePriceJD ?? c.basePrice ?? 0) || 0) : 0;
+    if (Number.isFinite(bpjd) && bpjd > 0) return bpjd;
+    return effectivePriceSV(p);
   }
 
   function isOut(p) {
@@ -1001,7 +1025,8 @@
         ? s.items.map(it => ({
             productId: String(it.productId || it.pid || ""),
             qty: Math.max(1, Number.parseFloat(it.qty || it.quantity || 1) || 1),
-            unitPrice: Math.max(0, Number.parseFloat(it.unitPrice || it.price || 0) || 0)
+            unitPrice: Math.max(0, Number.parseFloat(it.unitPrice || it.price || 0) || 0),
+            unitPriceJD: Math.max(0, Number.parseFloat(it.unitPriceJD || it.priceJD || 0) || 0)
           })).filter(it => it.productId)
         : (legacyPid ? [{
             productId: String(legacyPid),
@@ -1032,7 +1057,8 @@
         ? r.items.map(it => ({
             productId: String(it.productId || it.pid || ""),
             qty: Math.max(1, Number.parseFloat(it.qty || it.quantity || 1) || 1),
-            unitPrice: Math.max(0, Number.parseFloat(it.unitPrice || it.price || 0) || 0)
+            unitPrice: Math.max(0, Number.parseFloat(it.unitPrice || it.price || 0) || 0),
+            unitPriceJD: Math.max(0, Number.parseFloat(it.unitPriceJD || it.priceJD || 0) || 0)
           })).filter(it => it.productId)
         : [];
 
@@ -1089,7 +1115,7 @@
     state.featuredByCat = new Map();
     if(!state.salesFresh) return; // ✅ ha nem friss a sales, ne találgassunk felkapottat
     
-    const products = (state.productsDoc.products || []).filter(p => p && p.id && p.visible !== false);
+    const products = (state.productsDoc.products || []).filter(p => p && p.id && isProdVisible(p));
     const cats = (state.productsDoc.categories || []);
     const enabledCats = new Set(cats.filter(c => c && c.id && (c.featuredEnabled === false ? false : true)).map(c => String(c.id)));
 
@@ -1218,10 +1244,12 @@
         label_hu: c.label_hu || c.id,
         label_en: c.label_en || c.label_hu || c.id,
         basePrice: Number(c.basePrice || 0),
+        basePriceJD: Number((c.basePriceJD ?? c.basePrice ?? 0) || 0),
         featuredEnabled: (c.featuredEnabled === false) ? false : true,
-        visible: (c.visible === false) ? false : true
+        visible: (c.visible === false) ? false : true,
+        visibleJD: (c.visibleJD === false) ? false : true
       }))
-      .filter(c => isAdminMode || c.visible !== false)
+      .filter(c => isAdminMode || c.visibleJD !== false)
       .sort((a, b) => catLabel(a).localeCompare(catLabel(b), locale()));
 
     return [
@@ -1236,7 +1264,7 @@
 
     const catVisible = new Map();
     for(const c of (state.productsDoc.categories || [])){
-      if(c && c.id) catVisible.set(String(c.id), (c.visible === false) ? false : true);
+      if(c && c.id) catVisible.set(String(c.id), (c.visibleJD === false) ? false : true);
     }
 
     let list = (state.productsDoc.products || []).map((p) => ({
@@ -1245,10 +1273,12 @@
       categoryId: String(p.categoryId || ""),
       status: p.status === "soon" || p.status === "out" || p.status === "ok" ? p.status : "ok",
       stock: Math.max(0, Number(p.stock || 0)),
-      visible: (p.visible === false) ? false : true
-    })).filter(p => p.id && p.visible !== false);
+      visible: (p.visible === false) ? false : true,
+      visibleJD: (p.visibleJD === false) ? false : true
+    })).filter(p => p.id);
 
     if(!isAdminMode){
+      list = list.filter(p => p.visibleJD !== false);
       list = list.filter(p => p.status === "soon" || (catVisible.get(String(p.categoryId)) !== false));
     }
 
@@ -1319,7 +1349,7 @@
       const pid = state.featuredByCat.get(String(c.id));
       if(!pid) continue;
       const p = (state.productsDoc.products||[]).find(x=>String(x.id)===String(pid));
-      if(p && p.visible !== false) out.push(p);
+      if(p && isProdVisible(p)) out.push(p);
     }
     return out;
   }
@@ -1342,7 +1372,7 @@
         const pid = state.featuredByCat.get(String(state.active));
         if(pid){
           const p = (state.productsDoc.products||[]).find(x=>String(x.id)===String(pid));
-          if(p && p.visible !== false) featuredToPrepend = [p];
+          if(p && isProdVisible(p)) featuredToPrepend = [p];
         }
       }
     }
@@ -1499,7 +1529,7 @@
     // sort: newest first (admin list is newest first)
     popups.sort((a,b)=>(Number(b.createdAt||0)-Number(a.createdAt||0)));
 
-    const products = (state.productsDoc.products || []).filter(p=>p && p.id && p.visible !== false);
+    const products = (state.productsDoc.products || []).filter(p=>p && p.id && isProdVisible(p));
     const cats = (state.productsDoc.categories || []);
 
     const queue = [];
